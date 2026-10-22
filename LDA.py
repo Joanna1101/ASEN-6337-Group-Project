@@ -4,6 +4,11 @@ import matplotlib.pyplot as plt
 import scipy as sp
 import pandas as pd
 import pathlib as Path
+import sklearn
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import cohen_kappa_score
+
+
 
 DATA_DIR = Path.Path("Data")
 
@@ -217,6 +222,11 @@ annualCropProjectionTest = annualCropTest @ WT
 forestProjectionTest = forestTest @ WT
 residentialProjectionTest = residentialTest @ WT
 
+if annualCropProjectionTrain.shape == forestProjectionTrain.shape == residentialProjectionTrain.shape:
+    print("Shape of Projections for each class:")
+    print(annualCropProjectionTrain.shape)
+    print("\n")
+
 # %%
 plt.figure(figsize=(5, 5))
 
@@ -274,9 +284,6 @@ plt.grid(alpha=0.2)
 plt.show()
 
 # %%
-import matplotlib.pyplot as plt
-import numpy as np
-
 x1 = annualCropProjectionTrain[:,0]
 y1 = annualCropProjectionTrain[:,1]
 z1 = annualCropProjectionTrain[:,2]
@@ -310,6 +317,65 @@ ax.set_title('Matplotlib 3D Scatter Plot')
 
 # 5. Display the plot
 plt.show()
+
+
+# %%
+# Now to predict things
+classNamesP = np.array([0,1,7])
+centersOfTrainingData = np.vstack([annualCropProjectionTrain.mean(axis = 0), forestProjectionTrain.mean(axis = 0), residentialProjectionTrain.mean(axis = 0)])
+
+def predictLDA(features, WT=WT):
+    projection = np.atleast_2d(features) @ WT
+    distances = np.column_stack([np.linalg.norm(projection - center, axis=1) for center in centersOfTrainingData])
+
+    return classNamesP[np.argmin(distances, axis=1)]
+
+# %%
+prediction = predictLDA(annualCropTest[0])[0]
+print("Predicted class:", classNames[prediction])
+print("Actual class: AnnualCrop")
+print("\n")
+
+# %%
+# Big Prediction Test
+testData = np.vstack([annualCropTest, forestTest, residentialTest])
+actualClasses = np.repeat(classNamesP,[len(annualCropTest), len(forestTest), len(residentialTest)])
+
+
+totalPredictions = predictLDA(testData)
+
+results = pd.DataFrame({"Actual": classNames[actualClasses], "Predicted": classNames[totalPredictions]})
+
+print(results.head(10))
+
+accuracy = np.mean(totalPredictions == actualClasses)
+print(f"Test accuracy: {accuracy:.2%}")
+
+# %%
+cm = confusion_matrix(actualClasses, totalPredictions)
+print(cm)
+
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Annual Crop', 'Forest', 'Residential'])
+disp.plot()
+plt.show()
+
+# %%
+po = 0
+pe = 0
+for i in range(cm.shape[0]):
+    po += cm[i, i]/testData.shape[0]
+    pe += (np.sum(cm[i, :]) * np.sum(cm[:, i])) / (testData.shape[0]**2)
+
+
+
+
+kappaCohen = (po - pe) / (1 - pe)
+print(f"Proportion of Agreement = Accuracy = {po:.2%}")
+print(f"Expected Agreement by Chance = {pe:.2%}")
+
+if np.allclose(cohen_kappa_score(actualClasses, totalPredictions), kappaCohen):
+    print(f"Cohen's Kappa Coefficient = {kappaCohen:.2f}")
+    print(f"Meaning: Model predicts 88% better than pure chance i.e. 164 accurate predictions over 100/300 = 264/300")
 
 
 
